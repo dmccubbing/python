@@ -1,0 +1,11 @@
+*.py[cod]
+
+# tmp folders/files
+tmp
+*~
+\#*\#
+*.swp
+
+# Mac
+.DS_Store
+

@@ -3,11 +3,12 @@ CS50 Library
 https://manual.cs50.net/Library
 
 @author Colton Ogden <cogden@cs50.net>
+@author Dan Armendariz <danallan@cs.harvard.edu>
 @link https://manual.cs50.net/Library
 @package CS50
-@version 0.1
+@version 0.2
 
-Copyright (c) 2013, David J. Malan <malan@harvard.edu>
+Copyright (c) 2014, David J. Malan <malan@harvard.edu>
 All rights reserved.
 
 BSD 3-Clause License
@@ -39,91 +40,95 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
+from tempfile import gettempdir
 import openid
-import openid.extensions.ax
-import openid.extensions.sreg
-from openid.store import filestore
+from openid.extensions import ax, sreg
+from openid.store.filestore import FileOpenIDStore
 from openid.consumer import consumer
-import util
 
 # CS50
 class CS50:
     """
     Returns URL to which user can be directed for
     authentication via CS50 ID.
-    
-    @param  directory   Directory used to store state
+
     @param  trust_root  URL that CS50 ID should prompt user to trust
     @param  return_to   URL to which CS50 ID should return user
     @param  session     Session variable passed in (i.e., through Django)
     @param  fields      Simple Registration fields to request from CS50 ID
     @param  attributes  Attribute Exchange attributes to request from CS50 ID
-    
+
     @return URL for CS50 ID
     """
     @staticmethod
-    def getLoginUrl(directory, trust_root, return_to, session, fields = ['email', 'fullname'], attributes = []):
+    def getLoginUrl(trust_root, return_to, session,
+                    fields=['email','fullname'], attributes=None):
         # prepare request
-        store = util.getOpenIDStore(directory, 'c_')
+        store = FileOpenIDStore(gettempdir())
         c = consumer.Consumer(session, store)
         auth_request = c.begin('https://id.cs50.net')
-        
+
         # simple registration fields
-        if (fields and len(fields) > 0)
-            sreg_request = sreg.SRegRequest(optional=fields, required=['key'])
+        if fields:
+            sreg_request = sreg.SRegRequest(optional=fields, required=None)
             auth_request.addExtension(sreg_request)
-            
+
         # attribute exchange fields
-        if len(attributes) > 0:
+        if attributes:
             ax_request = ax.FetchRequest()
             for attribute in attributes:
                 ax_request.add(ax.AttrInfo(attribute, count=1, required=False))
             auth_request.addExtension(ax_request)
-        
+
         # generate url for direction
-        return auth_request.redirect_url(trust_root, return_to)
-        
+        url = auth_request.redirectURL(trust_root, return_to)
+
+        # return built url
+        return url
+
     """
     If user was authenticated (at URL returned by getLoginUrl),
     returns associative array that WILL contain user's Harvard email
     address (mail) and that MAY contain user's name (displayName).
-    
-    @param  directory   Path to directory used to store state
+
     @param  return_to   URL to which CS50 ID returned user
-    @param  request     A Django Request object we can grab parameters from  
-         
+    @param  session     Session variable passed in (i.e., through Django)
+    @param  get         A dictionary of GET parameters
+    @param  post        A dictionary of POST parameters
+    @param  attributes  Attribute Exchange attributes to request from CS50 ID
+
     @return user as associative array, or false if failed
     """
     @staticmethod
-    def getUser(directory, return_to, request):
-        user = {}
-        
-        # clean parameters from the request URL to ensure Janrain's lib works
-        request_args = util.normalDict(request.GET)
-        if request.method == 'POST':
-            request_args.update(util.normalDict(request.POST))
+    def getUser(return_to, session, get=None, post=None, attributes=None):
+        store = FileOpenIDStore(gettempdir())
+        c = consumer.Consumer(session, store)
 
-        if request_args:
-            c = getConsumer(request)
-            
+        # build a params objects containing query parameters
+        params = get
+
+        # in the case of POST
+        if post:
+            params.update(post)
+
         # Get a response object indicating the result of the OpenID
         # protocol.
-        return_to = util.getViewURL(request, getUser)
-        response = c.complete(request_args, return_to)
-        
-        if response.status == consumer.SUCCESS: 
-            user['identity'] = response.identity_url
-            
+        response = c.complete(params, return_to)
+
+        user = None
+        if response.status == consumer.SUCCESS:
+            user = {'identity':response.identity_url}
+
             # simple registration fields
             sreg_response = sreg.SRegResponse.fromSuccessResponse(response)
-                if (sreg_response):
-                    user = dict(user.items() + sreg_response.items())
-            
+            if sreg_response:
+                user.update(dict(sreg_response.items()))
+
             # get attribute exchange attributes
             ax_response = ax.FetchResponse.fromSuccessResponse(response)
-                if (ax_response):
-                    user = dict(user.items() + sreg_response.items())
-            
-            return user
-        else:
-            return False
+            if ax_response and attributes:
+                for attribute in attributes:
+                    user[attribute] = ax_response.get(attribute)
+
+        return user
+
