@@ -126,9 +126,11 @@ class CS50:
 
             # get attribute exchange attributes
             ax_response = ax.FetchResponse.fromSuccessResponse(response)
-            if ax_response and attributes:
+            if ax_response is not None and attributes is not None:
                 for attribute in attributes:
-                    user[attribute] = ax_response.get(attribute)
-
+                    try:
+                        user[attribute] = ax_response.get(attribute)
+                    except KeyError:
+                        user[attribute] = None
         return user
 
