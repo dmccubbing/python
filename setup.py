@@ -12,6 +12,7 @@ setup(
     url='http://pypi.python.org/pypi/CS50/',
     license='LICENSE.txt',
     description='Utilities for OpenID with Python and CS50 ID.',
+    long_description=open('DESCRIPTION.md').read(),
     keywords = ['cs50'],
     install_requires=[
         "python-openid>=2.2.5"
